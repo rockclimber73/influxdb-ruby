@@ -113,7 +113,7 @@ module InfluxDB
 
             begin
               log(:debug) { "Found data in the queue! (#{data.length} points)" }
-              client.write(data.join("\n"), nil)
+              write(data)
             rescue StandardError => e
               log :error, "Cannot write data: #{e.inspect}"
             end
@@ -125,6 +125,12 @@ module InfluxDB
         def stop!
           log(:debug) { "Thread exiting, flushing queue." }
           check_background_queue until queue.empty?
+        end
+
+        private
+
+        def write(data)
+          client.write(data.join("\n"), nil)
         end
       end
     end
