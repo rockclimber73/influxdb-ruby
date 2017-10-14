@@ -102,9 +102,9 @@ module InfluxDB
 
             while data.values.flatten.size < max_post_points && !queue.empty?
               begin
-                p = queue.pop(true)
-                data[p.first] ||= []
-                data[p.first].push p.second
+                retention_policy, data_points = queue.pop(true)
+                data[retention_policy] ||= []
+                data[retention_policy].push data_points
               rescue ThreadError
                 next
               end
