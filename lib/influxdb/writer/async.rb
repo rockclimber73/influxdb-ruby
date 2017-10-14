@@ -12,9 +12,9 @@ module InfluxDB
         @config = config
       end
 
-      def write(data, _precision = nil, _retention_policy = nil, _database = nil)
+      def write(data, _precision = nil, retention_policy = nil, _database = nil)
         data = data.is_a?(Array) ? data : [data]
-        data.map { |p| worker.push(p) }
+        data.map { |p| worker.push([retention_policy, p]) }
       end
 
       WORKER_MUTEX = Mutex.new
@@ -98,21 +98,22 @@ module InfluxDB
           end
 
           loop do
-            data = []
+            data = {}
 
-            while data.size < max_post_points && !queue.empty?
+            while data.values.flatten.size < max_post_points && !queue.empty?
               begin
                 p = queue.pop(true)
-                data.push p
+                data[p.first] ||= []
+                data[p.first].push p.second
               rescue ThreadError
                 next
               end
             end
 
-            return if data.empty?
+            return if data.values.flatten.empty?
 
             begin
-              log(:debug) { "Found data in the queue! (#{data.length} points)" }
+              log(:debug) { "Found data in the queue! (#{data.values.flatten.length} points)" }
               write(data)
             rescue StandardError => e
               log :error, "Cannot write data: #{e.inspect}"
@@ -130,7 +131,9 @@ module InfluxDB
         private
 
         def write(data)
-          client.write(data.join("\n"), nil)
+          data.each do |retention_policy, points|
+            client.write(points.join("\n"), nil, retention_policy)
+          end
         end
       end
     end
