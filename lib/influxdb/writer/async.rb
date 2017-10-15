@@ -14,7 +14,7 @@ module InfluxDB
 
       def write(data, _precision = nil, retention_policy = nil, _database = nil)
         data = data.is_a?(Array) ? data : [data]
-        data.map { |p| worker.push([retention_policy, p]) }
+        data.map { |p| worker.push([p, retention_policy]) }
       end
 
       WORKER_MUTEX = Mutex.new
@@ -102,9 +102,9 @@ module InfluxDB
 
             while data.values.flatten.size < max_post_points && !queue.empty?
               begin
-                retention_policy, data_points = queue.pop(true)
+                data_points, retention_policy = queue.pop(true)
                 data[retention_policy] ||= []
-                data[retention_policy].push data_points
+                data[retention_policy] << data_points
               rescue ThreadError
                 next
               end
