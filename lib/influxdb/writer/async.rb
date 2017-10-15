@@ -14,7 +14,7 @@ module InfluxDB
 
       def write(data, _precision = nil, retention_policy = nil, _database = nil)
         data = data.is_a?(Array) ? data : [data]
-        data.map { |p| worker.push([p, retention_policy]) }
+        data.map { |payload| worker.push(payload, retention_policy) }
       end
 
       WORKER_MUTEX = Mutex.new
@@ -58,8 +58,8 @@ module InfluxDB
           spawn_threads!
         end
 
-        def push(payload)
-          queue.push(payload)
+        def push(payload, retention_policy)
+          queue.push([payload, retention_policy])
         end
 
         def current_threads
