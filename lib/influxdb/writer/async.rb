@@ -12,9 +12,9 @@ module InfluxDB
         @config = config
       end
 
-      def write(data, _precision = nil, _retention_policy = nil, _database = nil)
+      def write(data, precision = nil, retention_policy = nil, database = nil)
         data = data.is_a?(Array) ? data : [data]
-        data.map { |p| worker.push(p) }
+        data.map { |payload| worker.push(payload, precision, retention_policy, database) }
       end
 
       WORKER_MUTEX = Mutex.new
@@ -58,8 +58,8 @@ module InfluxDB
           spawn_threads!
         end
 
-        def push(payload)
-          queue.push(payload)
+        def push(payload, precision = nil, retention_policy = nil, database = nil)
+          queue.push([payload, precision, retention_policy, database])
         end
 
         def current_threads
@@ -98,22 +98,28 @@ module InfluxDB
           end
 
           loop do
-            data = []
+            data = {}
 
-            while data.size < max_post_points && !queue.empty?
+            while data.values.flatten.size < max_post_points && !queue.empty?
               begin
-                p = queue.pop(true)
-                data.push p
+                payload, precision, retention_policy, database = queue.pop(true)
+                key = {
+                  db: database,
+                  pr: precision,
+                  rp: retention_policy
+                }
+                data[key] ||= []
+                data[key] << payload
               rescue ThreadError
                 next
               end
             end
 
-            return if data.empty?
+            return if data.values.flatten.empty?
 
             begin
-              log(:debug) { "Found data in the queue! (#{data.length} points)" }
-              client.write(data.join("\n"), nil)
+              log(:debug) { "Found data in the queue! (#{data.values.flatten.length} points)" }
+              write(data)
             rescue StandardError => e
               log :error, "Cannot write data: #{e.inspect}"
             end
@@ -125,6 +131,14 @@ module InfluxDB
         def stop!
           log(:debug) { "Thread exiting, flushing queue." }
           check_background_queue until queue.empty?
+        end
+
+        private
+
+        def write(data)
+          data.each do |key, points|
+            client.write(points.join("\n"), key[:pr], key[:rp], key[:db])
+          end
         end
       end
     end
